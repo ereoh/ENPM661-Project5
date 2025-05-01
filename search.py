@@ -3,6 +3,30 @@ import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
 from map import Map  # Import user-provided map with obstacles
 
+# Algorithm 5 Line 1
+# Swap(T_a, T_b)
+def swap_if_needed(tree_a, tree_b, failure, threshold):
+    # Algorithm 5 Line 1
+    if len(tree_a.nodes) < len(tree_b.nodes):
+        # Algorithm 5 Line 2
+        return tree_b, tree_a, 0  # reset failure on swap
+    else:
+        # Algorithm 5 Line 4
+        failure += 1
+        # Algorithm 5 Line 5
+        if failure >= threshold:
+            # Algorithm 5 Line 6-7
+            density_a = len(tree_a.nodes)
+            density_b = len(tree_b.nodes)
+            # Algorithm 5 Line 8-12
+            if density_a > density_b:
+                expand_target = 'b'
+            else:
+                expand_target = 'a'
+            # Algorithm 5 Line 13
+            return tree_b, tree_a, 0  # reset failure after swap
+    return tree_a, tree_b, failure
+
 # Node represents a point in the search tree with a link to its parent
 class Node:
     def __init__(self, position):
@@ -16,33 +40,33 @@ class Tree:
         self.kd_tree = KDTree([root.position])
         self.rebuild_threshold = 20  # Rebuild KDTree every N nodes
 
-    # Add a new node and periodically rebuild the KDTree
     def add_node(self, node):
         self.nodes.append(node)
         if len(self.nodes) % self.rebuild_threshold == 0:
             self.kd_tree = KDTree([n.position for n in self.nodes])
 
-    # Return the nearest node to a given position
     def nearest(self, position):
         _, index = self.kd_tree.query(position)
         return self.nodes[index]
 
-# Compute Euclidean distance between two points
 def distance(p1, p2):
     return np.linalg.norm(np.array(p1) - np.array(p2))
 
-# Steer from one node toward a target point with a given step size
+# Algorithm 4 Line 2-3
+# Extend(T, q_rand) — core of tree expansion logic
 def steer(from_node, to_position, step_size):
+    # Algorithm 4 Line 2
     direction = np.array(to_position) - np.array(from_node.position)
     length = np.linalg.norm(direction)
     if length == 0:
         return from_node.position
     direction = direction / length
+    # Algorithm 4 Line 3
     new_position = np.array(from_node.position) + step_size * direction
-    return new_position.tolist()
+    return new_position.tolist()  # q_new
 
-# Check if the straight path between two points is obstacle-free
 def is_collision_free(p1, p2, world, num_samples=200):
+    # Algorithm 4 Line 2 continued
     for i in range(num_samples + 1):
         t = i / num_samples
         x = p1[0] * (1 - t) + p2[0] * t
@@ -51,7 +75,6 @@ def is_collision_free(p1, p2, world, num_samples=200):
             return False
     return True
 
-# Attempt rewiring to a grandparent if it shortens the path
 def triangular_rewiring(tree, new_node, world):
     if new_node.parent is None or new_node.parent.parent is None:
         return
@@ -62,40 +85,47 @@ def triangular_rewiring(tree, new_node, world):
            distance(new_node.parent.position, new_node.position):
             new_node.parent = grandparent
 
-# Try connecting a node to the other tree using steering and collision checks
+# Algorithm 2 Line 1
+# Connect(T, q)
 def connect(tree, target_node, step_size, world, max_retries=5):
     current_node = tree.nearest(target_node.position)
     retries = 0
     while retries < max_retries:
+        # Algorithm 2 Line 2
         if distance(current_node.position, target_node.position) > 2 * step_size:
             return None
         new_position = steer(current_node, target_node.position, step_size)
         if not is_collision_free(current_node.position, new_position, world):
             retries += 1
-            continue
+            continue  # Algorithm 2 Line 3
+
         new_node = Node(new_position)
         new_node.parent = current_node
         tree.add_node(new_node)
         triangular_rewiring(tree, new_node, world)
+
+        # Algorithm 4 Line 6
         if is_collision_free(new_node.position, target_node.position, world) and \
            distance(new_node.position, target_node.position) < step_size:
-            return new_node
+            return new_node  # Algorithm 2 Line 4
+
         current_node = new_node
     return None
 
-# Sample randomly from space, with a small bias toward the goal
+# Algorithm 3 Line 1
+# Random_Config(R_T, q_goal, P_goal, P_outside)
 def biased_sample(goal, bias_prob=0.05, world=None):
     if np.random.rand() < bias_prob:
-        noise = np.random.normal(0, 5, size=2)
+        noise = np.random.normal(0, 5, size=2)  # Algorithm 3 Line 4
         candidate = (np.array(goal) + noise).tolist()
         if world.is_valid_point(candidate[0], candidate[1]):
-            return candidate
+            return candidate  # Algorithm 3 Line 6
+
     while True:
         sample = np.random.uniform(low=0, high=world.grid.shape[0], size=2).tolist()
         if world.is_valid_point(sample[0], sample[1]):
-            return sample
+            return sample  # Algorithm 3 Line 26
 
-# Try shortcutting random segments of the path to reduce total cost
 def optimize_path(path, world, iterations=50):
     if not path:
         return path
@@ -109,9 +139,10 @@ def optimize_path(path, world, iterations=50):
             path = path[:i+1] + path[j:]
     return path
 
-# Main ARRT algorithm: grows two trees and tries to connect them
+# Algorithm 1 Line 1
+# ARRT_Connect(q_init, q_goal)
 def arrt_anytime_connect(start, goal, step_size, max_iterations, world):
-    # T_a.init(q_init), T_b.init(q_goal)
+    # Algorithm 1 Line 1-2
     start_node = Node(start)
     goal_node = Node(goal)
     tree_a = Tree(start_node)
@@ -119,27 +150,30 @@ def arrt_anytime_connect(start, goal, step_size, max_iterations, world):
 
     best_path = None
     best_cost = float("inf")
-    stuck_counter = 0
-    max_stuck_iterations = 100
+    failure = 0  # Algorithm 5 Line 4
+    failure_threshold = 50
 
-    # for k = 1 to K do
+    # Algorithm 1 Line 3
     for i in range(max_iterations):
+        # Algorithm 1 Line 4
         rand_position = biased_sample(goal, world=world)
-        for tree_from, tree_to in [(tree_a, tree_b), (tree_b, tree_a)]:
-            # q_near = Nearest(T_a, q_rand)
+
+        for tree_from, tree_to in [(tree_a, tree_b), (tree_b, tree_a)]:  # Algorithm 1 Line 10
+            # Algorithm 1 Line 5
             nearest_node = tree_from.nearest(rand_position)
-            # q_new = Steer(q_near, q_rand)
             new_position = steer(nearest_node, rand_position, step_size)
             if not is_collision_free(nearest_node.position, new_position, world):
                 continue
+
             new_node = Node(new_position)
             new_node.parent = nearest_node
             tree_from.add_node(new_node)
             triangular_rewiring(tree_from, new_node, world)
 
-            # if Connect(T_b, q_new) == Reached then
+            # Algorithm 1 Line 6
             connect_node = connect(tree_to, new_node, step_size, world)
             if connect_node:
+                # Algorithm 1 Line 7
                 path = []
                 node = new_node
                 while node:
@@ -150,7 +184,6 @@ def arrt_anytime_connect(start, goal, step_size, max_iterations, world):
                 while node:
                     path.append(node.position)
                     node = node.parent
-                # OptimizePath(path)
                 path = optimize_path(path, world, iterations=20)
                 cost = sum(distance(path[i], path[i + 1]) for i in range(len(path) - 1))
                 if cost < best_cost:
@@ -158,6 +191,10 @@ def arrt_anytime_connect(start, goal, step_size, max_iterations, world):
                     best_cost = cost
                     print(f"Found better path with cost: {best_cost:.2f} at iteration {i}")
 
+        # Algorithm 1 Line 10
+        tree_a, tree_b, failure = swap_if_needed(tree_a, tree_b, failure, failure_threshold)
+
+    # Algorithm 1 Line 12
     return best_path, tree_a, tree_b
 
 # Visualize full path, obstacles, trees, start and goal
@@ -220,7 +257,7 @@ if __name__ == "__main__":
     world = Map(BUFFER=r)
 
     start = [50, 50]
-    goal = [200, 175]
+    goal = [500, 50]
     step_size = 10
     max_iterations = 10_000
 
