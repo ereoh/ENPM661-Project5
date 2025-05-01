@@ -75,16 +75,6 @@ def is_collision_free(p1, p2, world, num_samples=200):
             return False
     return True
 
-def triangular_rewiring(tree, new_node, world):
-    if new_node.parent is None or new_node.parent.parent is None:
-        return
-    grandparent = new_node.parent.parent
-    if is_collision_free(grandparent.position, new_node.position, world):
-        if distance(grandparent.position, new_node.position) < \
-           distance(grandparent.position, new_node.parent.position) + \
-           distance(new_node.parent.position, new_node.position):
-            new_node.parent = grandparent
-
 # Algorithm 2 Line 1
 # Connect(T, q)
 def connect(tree, target_node, step_size, world, max_retries=5):
@@ -102,7 +92,6 @@ def connect(tree, target_node, step_size, world, max_retries=5):
         new_node = Node(new_position)
         new_node.parent = current_node
         tree.add_node(new_node)
-        triangular_rewiring(tree, new_node, world)
 
         # Algorithm 4 Line 6
         if is_collision_free(new_node.position, target_node.position, world) and \
@@ -125,19 +114,6 @@ def biased_sample(goal, bias_prob=0.05, world=None):
         sample = np.random.uniform(low=0, high=world.grid.shape[0], size=2).tolist()
         if world.is_valid_point(sample[0], sample[1]):
             return sample  # Algorithm 3 Line 26
-
-def optimize_path(path, world, iterations=50):
-    if not path:
-        return path
-    for _ in range(iterations):
-        if len(path) < 3:
-            break
-        i, j = sorted(np.random.choice(len(path), 2, replace=False))
-        if j - i < 2:
-            continue
-        if is_collision_free(path[i], path[j], world):
-            path = path[:i+1] + path[j:]
-    return path
 
 # Algorithm 1 Line 1
 # ARRT_Connect(q_init, q_goal)
@@ -168,7 +144,6 @@ def arrt_anytime_connect(start, goal, step_size, max_iterations, world):
             new_node = Node(new_position)
             new_node.parent = nearest_node
             tree_from.add_node(new_node)
-            triangular_rewiring(tree_from, new_node, world)
 
             # Algorithm 1 Line 6
             connect_node = connect(tree_to, new_node, step_size, world)
@@ -184,7 +159,6 @@ def arrt_anytime_connect(start, goal, step_size, max_iterations, world):
                 while node:
                     path.append(node.position)
                     node = node.parent
-                path = optimize_path(path, world, iterations=20)
                 cost = sum(distance(path[i], path[i + 1]) for i in range(len(path) - 1))
                 if cost < best_cost:
                     best_path = path
