@@ -11,9 +11,9 @@ from tf_transformations import euler_from_quaternion
 # Import planning and visualization
 from search import arrt_anytime_connect, visualize_search, visualize_path
 
-CONTROL_DT = 0.5  # seconds
+CONTROL_DT = 0.1  # seconds
 WAYPOINT_TOL = 5.0  # cm
-LINEAR_SPEED = 0.1  # m/s
+LINEAR_SPEED = 0.2  # m/s
 ANGULAR_SPEED = 0.5  # rad/s
 
 class TurtlebotWaypointNode(Node):
@@ -29,7 +29,7 @@ class TurtlebotWaypointNode(Node):
         goal = (500, 250)  # cm
         step = 5
         max_iter = 5000
-        buffer = 20
+        buffer = 25
 
         path, tree_a, tree_b = arrt_anytime_connect(start, goal, step, max_iter, buffer)
 
