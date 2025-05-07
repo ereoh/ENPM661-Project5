@@ -26,10 +26,10 @@ class TurtlebotWaypointNode(Node):
 
         # ───── Get path from ARRT-Connect ─────
         start = (50, 250)   # cm
-        goal = (250, 200)  # cm
+        goal = (500, 250)  # cm
         step = 5
         max_iter = 5000
-        buffer = 10
+        buffer = 20
 
         path, tree_a, tree_b = arrt_anytime_connect(start, goal, step, max_iter, buffer)
 
