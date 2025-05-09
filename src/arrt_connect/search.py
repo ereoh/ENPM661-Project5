@@ -492,7 +492,7 @@ def delta():
     """
     Return the step size for expansion.
     """
-    return 5  # Example step size
+    return 10  # Example step size
 
 ####################################################################
 # Algorithm 2
@@ -502,7 +502,7 @@ def connect(tree, qnew):
     # Algorithm 2 line 1
     while True:
         # Algorithm 2 line 2
-        extend_result, qnew = extend(tree, qnew)
+        extend_result, _ = extend(tree, qnew)
         # Algorithm 2 line 3
         if extend_result != "Advanced":
             break
@@ -596,14 +596,6 @@ def arrt_connect(qinit, qgoal, k_max, pgoal, poutside):
 
         # Algorithm 1 line 10
         tree_a, tree_b, failure = swap_trees(tree_a, tree_b, failure, threshold)
-
-        if k % 100 == 0:  # Update every iteration
-            elapsed_time = time.time() - start_time
-            minutes = int(elapsed_time // 60)
-            seconds = int(elapsed_time % 60)
-            milliseconds = int((elapsed_time % 1) * 1000)
-            print(f"Iteration {k}/{k_max}: Tree A nodes = {len(tree_a.nodes)}, Tree B nodes = {len(tree_b.nodes)}, Elapsed time = {minutes}m {seconds}s {milliseconds}ms")
-            # visualize_path_and_trees(map_instance, tree_a, tree_b, [])
 
     # Algorithm 1 line 12
     elapsed_time = time.time() - start_time
@@ -720,13 +712,17 @@ def visualize_path(ax, path, color="red"):
 
 if __name__ == "__main__":
     # Example usage
-    qinit = (50, 250)  # Starting point
+    qinit = (50, 50)  # Starting point
     qgoal = (500, 50)  # Target point
     k_max = 25_000  # Maximum iterations
     pgoal = 0.2  # Probability of sampling qgoal
     poutside = 0.95  # Range for random sampling
 
     result, tree_a, tree_b = arrt_connect(qinit, qgoal, k_max, pgoal, poutside)
+    # Calculate and print the path length
+    path_length = sum(distance(result[i], result[i + 1]) for i in range(len(result) - 1))
+    print(f"Path length: {path_length:.2f} cm")
+
     if result != "Fail":
         print(f"Search completed. Path found with {len(tree_a.nodes)} nodes in Tree A and {len(tree_b.nodes)} nodes in Tree B.")
         visualize_path_and_trees(tree_a, tree_b, result)

@@ -1,19 +1,19 @@
 Experiment 1:
 
-Path found in 0m 0s 0ms with 2 nodes in Tree A and 3 nodes in Tree B.
-Search completed. Path found with 2 nodes in Tree A and 3 nodes in Tree B.
+Path found in 0m 0s 17ms with 3 nodes in Tree A and 19 nodes in Tree B.
+Path length: 205.85 cm
 
 Experiment 2:
 
-Path found in 0m 3s 560ms with 752 nodes in Tree A and 500 nodes in Tree B.
-Search completed. Path found with 752 nodes in Tree A and 500 nodes in Tree B.
+Path found in 0m 1s 685ms with 448 nodes in Tree A and 273 nodes in Tree B.
+Path length: 1330.94 cm
 
 Experiment 3:
 
-Path found in 0m 4s 502ms with 862 nodes in Tree A and 528 nodes in Tree B.
-Search completed. Path found with 862 nodes in Tree A and 528 nodes in Tree B.
+Path found in 0m 1s 792ms with 467 nodes in Tree A and 326 nodes in Tree B.
+Path length: 1304.45 cm
 
 Experiment 4:
 
-Path found in 0m 0s 424ms with 219 nodes in Tree A and 183 nodes in Tree B.
-Search completed. Path found with 219 nodes in Tree A and 183 nodes in Tree B.
+Path found in 0m 0s 56ms with 46 nodes in Tree A and 65 nodes in Tree B.
+Path length: 645.28 cm
