@@ -1,0 +1,19 @@
+Experiment 1:
+
+Path found in 0m 0s 0ms with 2 nodes in Tree A and 3 nodes in Tree B.
+Search completed. Path found with 2 nodes in Tree A and 3 nodes in Tree B.
+
+Experiment 2:
+
+Path found in 0m 3s 560ms with 752 nodes in Tree A and 500 nodes in Tree B.
+Search completed. Path found with 752 nodes in Tree A and 500 nodes in Tree B.
+
+Experiment 3:
+
+Path found in 0m 4s 502ms with 862 nodes in Tree A and 528 nodes in Tree B.
+Search completed. Path found with 862 nodes in Tree A and 528 nodes in Tree B.
+
+Experiment 4:
+
+Path found in 0m 0s 424ms with 219 nodes in Tree A and 183 nodes in Tree B.
+Search completed. Path found with 219 nodes in Tree A and 183 nodes in Tree B.

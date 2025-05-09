@@ -1,7 +1,9 @@
+import random
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
 import numpy as np
+import time  # Import the time module
 
 ####################################################################
 # Map and Obstacle Definitions
@@ -141,256 +143,593 @@ class Map:
 # Path Planning Algorithms
 ####################################################################
 
-# Algorithm 5 Line 1
-# Swap(T_a, T_b)
-def swap_if_needed(tree_a, tree_b, failure, threshold):
-    # Algorithm 5 Line 1
-    if len(tree_a.nodes) < len(tree_b.nodes):
-        # Algorithm 5 Line 2
-        return tree_b, tree_a, 0  # reset failure on swap
-    else:
-        # Algorithm 5 Line 4
-        failure += 1
-        # Algorithm 5 Line 5
-        if failure >= threshold:
-            # Algorithm 5 Line 6-7
-            density_a = len(tree_a.nodes)
-            density_b = len(tree_b.nodes)
-            # Algorithm 5 Line 8-12
-            if density_a > density_b:
-                expand_target = 'b'
-            else:
-                expand_target = 'a'
-            # Algorithm 5 Line 13
-            return tree_b, tree_a, 0  # reset failure after swap
-    return tree_a, tree_b, failure
+map_instance = Map(BUFFER=10)  # Create an instance of the Map class
 
-# Node represents a point in the search tree with a link to its parent
-class Node:
-    def __init__(self, position):
-        self.position = position
-        self.parent = None
-
-# Tree manages a list of nodes and supports nearest-neighbor queries
 class Tree:
     def __init__(self, root):
+        self.root = root
         self.nodes = [root]
-        self.kd_tree = KDTree([root.position])
-        self.rebuild_threshold = 20  # Rebuild KDTree every N nodes
+        self.edges = []
 
-    def add_node(self, node):
-        self.nodes.append(node)
-        if len(self.nodes) % self.rebuild_threshold == 0:
-            self.kd_tree = KDTree([n.position for n in self.nodes])
+    def add_node(self, node, parent=None):
+        """
+        Add a node to the tree only if it is in free space and has a valid parent.
+        """
+        if map_instance.is_valid_point(node[0], node[1]):  # Check if the node is in free space
+            if parent is not None and parent in self.nodes:
+                self.nodes.append(node)
+                self.add_edge(parent, node)
+            else:
+                print(f"Node {node} not added because it has no valid parent.")
+        else:
+            print(f"Node {node} not added because it is inside an obstacle.")
 
-    def nearest(self, position):
-        _, index = self.kd_tree.query(position)
-        return self.nodes[index]
+    def add_edge(self, node1, node2):
+        """
+        Add an edge between two nodes.
+        """
+        self.edges.append((node1, node2))
 
-def distance(p1, p2):
-    return np.linalg.norm(np.array(p1) - np.array(p2))
+############################################################
+# Algorithm 3
+############################################################
 
-# Algorithm 4 Line 2-3
-# Extend(T, q_rand) — core of tree expansion logic
-def steer(from_node, to_position, step_size):
-    # Algorithm 4 Line 2
-    direction = np.array(to_position) - np.array(from_node.position)
-    length = np.linalg.norm(direction)
-    if length == 0:
-        return from_node.position
-    direction = direction / length
-    # Algorithm 4 Line 3
-    new_position = np.array(from_node.position) + step_size * direction
-    return new_position.tolist()  # q_new
+def random_config(tree, qgoal, pgoal, poutside):
+    # Algorithm 3 line 1
+    if all_dimensions_reach_boundary(tree):
+        # Algorithm 3 line 2
+        qrand = random_configuration_in_space()
+    else:
+        # Algorithm 3 line 4
+        prand = random.random()
+        # Algorithm 3 line 5
+        if prand <= pgoal:
+            # Algorithm 3 line 6
+            qrand = qgoal
+        else:
+            # Algorithm 3 line 8
+            if prand >= poutside:
+                # Algorithm 3 line 9
+                qrand = random_configuration_in_tree(tree)
+            else:
+                # Algorithm 3 line 11
+                unexplored_intervals = calculate_unexplored_intervals(tree)
+                dmax, ur_values = find_dimension_with_largest_unexplored(unexplored_intervals)
+                # Algorithm 3 line 14
+                pmax = ur_values[dmax] / sum(ur_values)
+                # Algorithm 3 line 16
+                if random.random() <= pmax:
+                    dim = dmax
+                else:
+                    # Algorithm 3 line 18
+                    dim = choose_other_dimension(dmax, ur_values)
+                # Algorithm 3 line 21
+                qrand = config_in_range(dim, unexplored_intervals)
+        # Algorithm 3 line 24
+        poutside = update_poutside(tree)
+    # Algorithm 3 line 26
+    return qrand, poutside
 
-def is_collision_free(p1, p2, world, num_samples=200):
-    # Algorithm 4 Line 2 continued
-    for i in range(num_samples + 1):
-        t = i / num_samples
-        x = p1[0] * (1 - t) + p2[0] * t
-        y = p1[1] * (1 - t) + p2[1] * t
-        if not world.is_valid_point(x, y):
+# Helper functions
+def all_dimensions_reach_boundary(tree):
+    """
+    Check if all dimensions of the tree reach the boundary of the configuration space.
+    """
+    for node in tree.nodes:
+        x, y = node
+        if not (X_BOUNDS[0] <= x <= X_BOUNDS[1] and Y_BOUNDS[0] <= y <= Y_BOUNDS[1]):
             return False
     return True
 
-# Algorithm 2 Line 1
-# Connect(T, q)
-def connect(tree, target_node, step_size, world, max_retries=5):
-    current_node = tree.nearest(target_node.position)
-    retries = 0
-    while retries < max_retries:
-        # Algorithm 2 Line 2
-        if distance(current_node.position, target_node.position) > 2 * step_size:
-            return None
-        new_position = steer(current_node, target_node.position, step_size)
-        if not is_collision_free(current_node.position, new_position, world):
-            retries += 1
-            continue  # Algorithm 2 Line 3
-
-        new_node = Node(new_position)
-        new_node.parent = current_node
-        tree.add_node(new_node)
-
-        # Algorithm 4 Line 6
-        if is_collision_free(new_node.position, target_node.position, world) and \
-           distance(new_node.position, target_node.position) < step_size:
-            return new_node  # Algorithm 2 Line 4
-
-        current_node = new_node
-    return None
-
-# Algorithm 3 Line 1
-# Random_Config(R_T, q_goal, P_goal, P_outside)
-def biased_sample(goal, bias_prob=0.05, world=None):
-    if np.random.rand() < bias_prob:
-        noise = np.random.normal(0, 5, size=2)  # Algorithm 3 Line 4
-        candidate = (np.array(goal) + noise).tolist()
-        if world.is_valid_point(candidate[0], candidate[1]):
-            return candidate  # Algorithm 3 Line 6
-
+def random_configuration_in_space():
+    """
+    Generate a random configuration in the entire space.
+    """
     while True:
-        sample = np.random.uniform(low=0, high=world.grid.shape[0], size=2).tolist()
-        if world.is_valid_point(sample[0], sample[1]):
-            return sample  # Algorithm 3 Line 26
+        x = random.uniform(X_BOUNDS[0], X_BOUNDS[1])
+        y = random.uniform(Y_BOUNDS[0], Y_BOUNDS[1])
+        if map_instance.is_valid_point(x, y):  # Use the Map class's is_valid_point method
+            return (x, y)
 
-# Algorithm 1 Line 1
-# ARRT_Connect(q_init, q_goal)
-def arrt_anytime_connect(start, goal, step_size, max_iterations, buffer):
-    world = Map(BUFFER=buffer)
+def random_configuration_in_tree(tree):
+    """
+    Generate a random configuration within the region of the tree.
+    """
+    while True:
+        node = random.choice(tree.nodes)
+        x = node[0] + random.uniform(-r, r)  # Add a small random offset within the robot's radius
+        y = node[1] + random.uniform(-r, r)
+        if map_instance.is_valid_point(x, y):
+            return (x, y)
 
-    # Algorithm 1 Line 1-2
-    start_node = Node(start)
-    goal_node = Node(goal)
-    tree_a = Tree(start_node)
-    tree_b = Tree(goal_node)
+def calculate_unexplored_intervals(tree):
+    """
+    Calculate unexplored intervals in each dimension.
+    """
+    explored_x = [node[0] for node in tree.nodes]
+    explored_y = [node[1] for node in tree.nodes]
 
-    best_path = None
-    best_cost = float("inf")
-    failure = 0  # Algorithm 5 Line 4
-    failure_threshold = 50
+    unexplored_x = max(X_BOUNDS) - min(explored_x)
+    unexplored_y = max(Y_BOUNDS) - min(explored_y)
 
-    # Algorithm 1 Line 3
-    for i in range(max_iterations):
-        # Algorithm 1 Line 4
-        rand_position = biased_sample(goal, world=world)
+    return [unexplored_x, unexplored_y]
 
-        for tree_from, tree_to in [(tree_a, tree_b), (tree_b, tree_a)]:  # Algorithm 1 Line 10
-            # Algorithm 1 Line 5
-            nearest_node = tree_from.nearest(rand_position)
-            new_position = steer(nearest_node, rand_position, step_size)
-            if not is_collision_free(nearest_node.position, new_position, world):
-                continue
+def find_dimension_with_largest_unexplored(unexplored_intervals):
+    """
+    Find the dimension with the largest unexplored interval.
+    """
+    dmax = unexplored_intervals.index(max(unexplored_intervals))
+    return dmax, unexplored_intervals
 
-            new_node = Node(new_position)
-            new_node.parent = nearest_node
-            tree_from.add_node(new_node)
+def choose_other_dimension(dmax, ur_values):
+    """
+    Choose one of the remaining dimensions.
+    """
+    remaining_dims = [i for i in range(len(ur_values)) if i != dmax]
+    return random.choice(remaining_dims)
 
-            # Algorithm 1 Line 6
-            connect_node = connect(tree_to, new_node, step_size, world)
-            if connect_node:
-                # Algorithm 1 Line 7
-                path = []
-                node = new_node
-                while node:
-                    path.append(node.position)
-                    node = node.parent
-                path = path[::-1]
-                node = connect_node
-                while node:
-                    path.append(node.position)
-                    node = node.parent
-                cost = sum(distance(path[i], path[i + 1]) for i in range(len(path) - 1))
-                if cost < best_cost:
-                    best_path = path
-                    best_cost = cost
-                    print(f"Found better path with cost: {best_cost:.2f} at iteration {i}")
+def config_in_range(dim, unexplored_intervals):
+    """
+    Generate a configuration in the range of the unexplored interval for the given dimension.
+    """
+    while True:
+        if dim == 0:  # x-dimension
+            x = random.uniform(X_BOUNDS[0], unexplored_intervals[dim])
+            y = random.uniform(Y_BOUNDS[0], Y_BOUNDS[1])
+        else:  # y-dimension
+            x = random.uniform(X_BOUNDS[0], X_BOUNDS[1])
+            y = random.uniform(Y_BOUNDS[0], unexplored_intervals[dim])
+        if map_instance.is_valid_point(x, y):
+            return (x, y)
 
-        # Algorithm 1 Line 10
-        tree_a, tree_b, failure = swap_if_needed(tree_a, tree_b, failure, failure_threshold)
+def update_poutside(tree):
+    """
+    Update the value of Poutside based on the ratio of unexplored space to total space.
+    """
+    # Total space area
+    total_space = (X_BOUNDS[1] - X_BOUNDS[0]) * (Y_BOUNDS[1] - Y_BOUNDS[0])
 
-    # Algorithm 1 Line 12
-    return best_path, tree_a, tree_b
+    # Calculate unexplored intervals
+    unexplored_intervals = calculate_unexplored_intervals(tree)
+    unexplored_space = unexplored_intervals[0] * unexplored_intervals[1]
 
-########################################################################
-# Visualization functions for the path and search trees
-########################################################################
+    # Update Poutside as the ratio of unexplored space to total space
+    poutside = unexplored_space / total_space
 
-# Visualize full path, obstacles, trees, start and goal
-def visualize_search(path, start, goal, tree_a, tree_b, buffer):
-    world = Map(BUFFER=buffer)
-    plt.figure(figsize=(10, 6))
-    plt.title("ARRT-Connect Path Planning")
-    plt.xlim(0, world.grid.shape[0])
-    plt.ylim(0, world.grid.shape[1])
-    plt.gca().set_aspect('equal')
+    # Optionally scale Poutside to avoid it becoming too small
+    poutside = max(0.01, min(poutside, 1))  # Clamp between 0.01 and 1
 
-    obstacle_points = np.transpose(np.where(world.grid == False))
-    if obstacle_points.size > 0:
-        plt.plot(obstacle_points[:, 0], obstacle_points[:, 1], 'ks', markersize=1)
+    return poutside
 
-    if path:
-        px, py = zip(*path)
-        plt.plot(px, py, 'r-', linewidth=2, label='Planned Path')
+##############################################################
+# Algorithm 4
+##############################################################
 
-    plt.plot(start[0], start[1], 'go', markersize=8, label='Start')
-    plt.plot(goal[0], goal[1], 'bo', markersize=8, label='Goal')
+def extend(tree, qrand):
+    """
+    Extend the tree towards the sample point qrand.
+    """
+    # Algorithm 4 line 1
+    qnear = nearest_neighbor(tree, qrand)
 
-    for node in tree_a.nodes:
-        plt.plot(node.position[0], node.position[1], 'g.')
-    for node in tree_b.nodes:
-        plt.plot(node.position[0], node.position[1], 'b.')
+    # Algorithm 4 line 2
+    if new_config(qnear, qrand):
+        qnew = compute_new_config(qnear, qrand)  # Compute the new configuration
+        if map_instance.is_valid_point(qnew[0], qnew[1]):
+            # Algorithm 4 line 3
+            tree.add_node(qnew, qnear)
+            # Algorithm 4 line 4
+            tree.add_edge(qnear, qnew)  # Add an edge between qnear and qnew
+            # Algorithm 4 line 5
+            if distance(qnew, qrand) <= delta():
+                # Algorithm 4 line 6
+                return "Reached", qnew
+            else:
+                # Algorithm 4 line 8
+                return "Advanced", qnew
+        else :
+            # Algorithm 4 line 25
+            return "Trapped", None
+    else:
+        # Algorithm 4 line 11
+        s_points = local_sampling(qnear)
+        # Algorithm 4 line 12
+        s_obstacle, s_free = divide_based_on_free(s_points)
+        # Algorithm 4 line 13
+        aveobs = mean_point(s_obstacle)
 
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+        # Algorithm 4 line 14
+        if aveobs is not None and in_obstacle(aveobs):
+            # Algorithm 4 line 15
+            qobs1, qobs2 = furthest_point_pair(s_obstacle)
+            # Algorithm 4 line 16
+            expand_along_line(tree, qnear, qobs1, qobs2)
+        else:
+            # Algorithm 4 line 18
+            if aveobs is not None and distance(aveobs, qnear) >= delta():
+                # Algorithm 4 line 19
+                expand_towards(tree, qnear, aveobs)
+            else:
+                # Algorithm 4 line 21
+                qfree1, qfree2 = furthest_point_pair(s_free)
+                # Algorithm 4 line 22
+                expand_along_line(tree, qnear, qfree1, qfree2)
+        # Algorithm 4 line 25
+        return "Trapped", None
 
-# Visualize only the path, obstacles, and start/goal markers
-def visualize_path(path, start, goal, buffer):
-    world = Map(BUFFER=buffer)
-    plt.figure(figsize=(10, 6))
-    plt.title("ARRT-Connect Path Only")
-    plt.xlim(0, world.grid.shape[0])
-    plt.ylim(0, world.grid.shape[1])
-    plt.gca().set_aspect('equal')
+# Helper functions
+def nearest_neighbor(tree, qrand):
+    """
+    Find the nearest neighbor to qrand in the tree.
+    """
+    return min(tree.nodes, key=lambda node: distance(node, qrand))
 
-    # Plot obstacles
-    obstacle_points = np.transpose(np.where(world.grid == False))
-    if obstacle_points.size > 0:
-        plt.plot(obstacle_points[:, 0], obstacle_points[:, 1], 'ks', markersize=1)
+def new_config(qnear, qrand):
+    """
+    Check if a new configuration can be created between qnear and qrand.
+    Ensures the path between qnear and qrand is valid by sampling points.
+    """
+    seg_len   = distance(qnear, qrand)
+    n_samples = max(1, int(seg_len/5))
 
-    # Plot the path
-    if path:
-        px, py = zip(*path)
-        plt.plot(px, py, 'r-', linewidth=2, label='Planned Path')
+    for i in range(n_samples + 1):
+        t = i / n_samples
+        x = qnear[0] + t * (qrand[0] - qnear[0])
+        y = qnear[1] + t * (qrand[1] - qnear[1])
+        if not map_instance.is_valid_point(x, y):
+            return False
+    return True
 
-    # Plot start and goal points
-    plt.plot(start[0], start[1], 'go', markersize=8, label='Start')
-    plt.plot(goal[0], goal[1], 'bo', markersize=8, label='Goal')
+def compute_new_config(qnear, qrand):
+    """
+    Compute a new configuration between qnear and qrand.
+    """
+    step_size = delta()
+    direction = np.array(qrand) - np.array(qnear)
+    norm = np.linalg.norm(direction)
+    if norm == 0:
+        return qnear
+    direction = direction / norm
+    qnew = np.array(qnear) + step_size * direction
+    qnew = tuple(qnew)
+    # Validate the new configuration
+    if map_instance.is_valid_point(qnew[0], qnew[1]):
+        return qnew
+    else:
+        return qnear
 
-    plt.legend()
-    plt.grid(True)
-    plt.show()
+def local_sampling(qnear):
+    """
+    Perform local sampling around qnear.
+    """
+    samples = []
+    for _ in range(10):  # Generate 10 random samples
+        x = qnear[0] + random.uniform(-r, r)
+        y = qnear[1] + random.uniform(-r, r)
+        if map_instance.is_valid_point(x, y):
+            samples.append((x, y))
+    return samples
+
+def divide_based_on_free(s_points):
+    """
+    Divide sampled points into free and obstacle points.
+    """
+    s_free = [p for p in s_points if map_instance.is_valid_point(p[0], p[1])]
+    s_obstacle = [p for p in s_points if not map_instance.is_valid_point(p[0], p[1])]
+    return s_obstacle, s_free
+
+def mean_point(points):
+    """
+    Compute the mean point of a set of points.
+    """
+    if not points:
+        return None
+    x_mean = sum(p[0] for p in points) / len(points)
+    y_mean = sum(p[1] for p in points) / len(points)
+    return (x_mean, y_mean)
+
+def in_obstacle(point):
+    """
+    Check if a point is inside an obstacle.
+    """
+    return not map_instance.is_valid_point(point[0], point[1])
+
+def furthest_point_pair(points):
+    """
+    Find the pair of points with the maximum distance between them.
+    """
+    if not points or len(points) < 2:
+        return None, None  # Return None if there are not enough points
+
+    max_dist = 0
+    pair = (None, None)
+    for i in range(len(points)):
+        for j in range(i + 1, len(points)):
+            dist = distance(points[i], points[j])
+            if dist > max_dist:
+                max_dist = dist
+                pair = (points[i], points[j])
+    return pair
+
+def expand_along_line(tree, qnear, p1, p2):
+    """
+    Expand qnear along the line between p1 and p2.
+    """
+    if p1 is None or p2 is None:
+        return
+
+    direction = np.array(p2) - np.array(p1)
+    norm = np.linalg.norm(direction)
+    if norm == 0:
+        return
+    direction = direction / norm
+    step_size = delta()
+    qnew = np.array(qnear) + step_size * direction
+    if map_instance.is_valid_point(qnew[0], qnew[1]):
+        tree.add_node(tuple(qnew), qnear)
+
+def expand_towards(tree, qnear, target):
+    """
+    Expand qnear towards the target point.
+    """
+    direction = np.array(target) - np.array(qnear)
+    norm = np.linalg.norm(direction)
+    if norm == 0:
+        return
+    direction = direction / norm
+    step_size = delta()
+    qnew = np.array(qnear) + step_size * direction
+    if map_instance.is_valid_point(qnew[0], qnew[1]):
+        tree.add_node(tuple(qnew), qnear)
+
+def distance(p1, p2):
+    """
+    Compute the Euclidean distance between two points.
+    """
+    return np.linalg.norm(np.array(p1) - np.array(p2))
+
+def delta():
+    """
+    Return the step size for expansion.
+    """
+    return 5  # Example step size
 
 ####################################################################
-# Main execution block: initialize world, plan path, and visualize
+# Algorithm 2
 ####################################################################
+
+def connect(tree, qnew):
+    # Algorithm 2 line 1
+    while True:
+        # Algorithm 2 line 2
+        extend_result, qnew = extend(tree, qnew)
+        # Algorithm 2 line 3
+        if extend_result != "Advanced":
+            break
+    # Algorithm 2 line 4
+    return extend_result
+
+##############################################################
+# Algorithm 5
+##############################################################
+
+def swap_trees(tree_a, tree_b, failure, threshold):
+    """
+    Swap trees based on the number of nodes and density.
+    """
+    # Algorithm 5 line 1
+    if len(tree_a.nodes) < len(tree_b.nodes):
+        # Algorithm 5 line 2
+        return tree_b, tree_a, failure  # Swap trees
+    else:
+        # Algorithm 5 line 3
+        failure += 1
+
+        # Algorithm 5 line 5
+        if failure >= threshold:
+            # Algorithm 5 line 6
+            density_a = len(tree_a.nodes) / (X_BOUNDS[1] - X_BOUNDS[0]) * (Y_BOUNDS[1] - Y_BOUNDS[0])
+            density_b = len(tree_b.nodes) / (X_BOUNDS[1] - X_BOUNDS[0]) * (Y_BOUNDS[1] - Y_BOUNDS[0])
+
+            # Algorithm 5 line 8
+            if density_a > density_b:
+                # Algorithm 5 line 9
+                expand_tree(tree_b)
+            else:
+                # Algorithm 5 line 11
+                expand_tree(tree_a)
+
+            # Algorithm 5 line 13
+            tree_a, tree_b = tree_b, tree_a
+            # Algorithm 5 line 14
+            failure = 0
+
+    return tree_a, tree_b, failure
+
+def expand_tree(tree):
+    """
+    Expand the given tree by adding a random valid node.
+    """
+    qrand = random_configuration_in_space()
+    extend(tree, qrand)
+
+##############################################################
+# Algorithm 1
+##############################################################
+
+def arrt_connect(qinit, qgoal, k_max, pgoal, poutside):
+    # Start timing
+    start_time = time.time()
+
+    # Early exit if start and goal are the same
+    if qinit == qgoal:
+        elapsed_time = time.time() - start_time
+        minutes = int(elapsed_time // 60)
+        seconds = int(elapsed_time % 60)
+        milliseconds = int((elapsed_time % 1) * 1000)
+        print(f"Start and goal are the same. Path found immediately in {minutes}m {seconds}s {milliseconds}ms.")
+        return [qinit], Tree(qinit), Tree(qgoal)
+
+    # Algorithm 1 line 1
+    tree_a = Tree(qinit)
+    # Algorithm 1 line 2
+    tree_b = Tree(qgoal)
+
+    failure = 0  # Initialize failure counter
+    threshold = 5  # Set a threshold for failure
+
+    # Algorithm 1 line 3
+    for k in range(1, k_max + 1):
+        # Algorithm 1 line 4
+        qrand, poutside = random_config(tree_a, qgoal, pgoal, poutside)
+        extend_result, qnew = extend(tree_a, qrand)
+        # Algorithm 1 line 5
+        if extend_result != "Trapped":
+            # Algorithm 1 line 6
+            if connect(tree_b, qnew) == "Reached":
+                elapsed_time = time.time() - start_time
+                minutes = int(elapsed_time // 60)
+                seconds = int(elapsed_time % 60)
+                milliseconds = int((elapsed_time % 1) * 1000)
+                print(f"Path found in {minutes}m {seconds}s {milliseconds}ms with {len(tree_a.nodes)} nodes in Tree A and {len(tree_b.nodes)} nodes in Tree B.")
+                return path(tree_a, tree_b), tree_a, tree_b
+
+        # Algorithm 1 line 10
+        tree_a, tree_b, failure = swap_trees(tree_a, tree_b, failure, threshold)
+
+        if k % 100 == 0:  # Update every iteration
+            elapsed_time = time.time() - start_time
+            minutes = int(elapsed_time // 60)
+            seconds = int(elapsed_time % 60)
+            milliseconds = int((elapsed_time % 1) * 1000)
+            print(f"Iteration {k}/{k_max}: Tree A nodes = {len(tree_a.nodes)}, Tree B nodes = {len(tree_b.nodes)}, Elapsed time = {minutes}m {seconds}s {milliseconds}ms")
+            # visualize_path_and_trees(map_instance, tree_a, tree_b, [])
+
+    # Algorithm 1 line 12
+    elapsed_time = time.time() - start_time
+    minutes = int(elapsed_time // 60)
+    seconds = int(elapsed_time % 60)
+    milliseconds = int((elapsed_time % 1) * 1000)
+    print(f"Search failed after {minutes}m {seconds}s {milliseconds}ms with {len(tree_a.nodes)} nodes in Tree A and {len(tree_b.nodes)} nodes in Tree B.")
+    return "Fail", tree_a, tree_b
+
+# Helper function to compute the path between two trees
+def path(tree_a, tree_b):
+    """
+    Compute the path connecting tree_a and tree_b.
+    """
+    # Start from the root of tree_a
+    path_a = []
+    current = tree_a.nodes[-1]  # Last node added to tree_a
+    while current != tree_a.root:
+        path_a.append(current)
+        # Find the parent of the current node
+        for edge in tree_a.edges:
+            if edge[1] == current:
+                current = edge[0]
+                break
+    path_a.append(tree_a.root)  # Add the root of tree_a
+    path_a.reverse()  # Reverse to get the path from root to the last node
+
+    # Start from the root of tree_b
+    path_b = []
+    current = tree_b.nodes[-1]  # Last node added to tree_b
+    while current != tree_b.root:
+        path_b.append(current)
+        # Find the parent of the current node
+        for edge in tree_b.edges:
+            if edge[1] == current:
+                current = edge[0]
+                break
+    path_b.append(tree_b.root)  # Add the root of tree_b
+
+    # Combine the two paths
+    return path_a + path_b
+
+####################################################################
+# Visualization
+####################################################################
+
+def visualize_path_and_trees(tree_a, tree_b, path):
+    """
+    Visualize the map, trees, and path in three separate graphs.
+    """
+    # Create a figure with three subplots
+    fig, axes = plt.subplots(1, 3, figsize=(20, 7))
+
+    # Plot 1: Map with trees and path
+    ax1 = axes[0]
+    ax1.set_title("Map with Trees and Path")
+    visualize_map(ax1, map_instance)
+    visualize_tree(ax1, tree_a, color="blue")
+    visualize_tree(ax1, tree_b, color="green")
+    visualize_path(ax1, path, color="red")
+
+    # Plot 2: Map with path only
+    ax2 = axes[1]
+    ax2.set_title("Map with Path Only")
+    visualize_map(ax2, map_instance)
+    visualize_path(ax2, path, color="red")
+
+    # Plot 3: Trees only
+    ax3 = axes[2]
+    ax3.set_title("Map with Trees Only")
+    visualize_map(ax3, map_instance)
+    visualize_tree(ax3, tree_a, color="blue")
+    visualize_tree(ax3, tree_b, color="green")
+    ax3.set_xlim(0, WIDTH)
+    ax3.set_ylim(0, HEIGHT)
+    ax3.set_aspect("equal")
+
+    # Show the plots
+    plt.tight_layout()
+    plt.show()
+
+def visualize_map(ax, map_instance):
+    """
+    Visualize the map on the given axis using the precomputed grid.
+    """
+    # Use the precomputed grid from the map instance
+    grid = ~map_instance.grid  # Invert the grid (True -> False, False -> True)
+
+    # Display the grid as an image
+    ax.imshow(grid.T, origin="lower", extent=(0, WIDTH, 0, HEIGHT), cmap="Greys", alpha=0.5)
+    ax.set_xlim(0, WIDTH)
+    ax.set_ylim(0, HEIGHT)
+    ax.set_aspect("equal")
+
+def visualize_tree(ax, tree, color="blue"):
+    """
+    Visualize a tree on the given axis.
+    """
+    for edge in tree.edges:
+        x1, y1 = edge[0]
+        x2, y2 = edge[1]
+        ax.plot([x1, x2], [y1, y2], color=color, linewidth=1, alpha=0.7)
+    for node in tree.nodes:
+        ax.scatter(node[0], node[1], color=color, s=10)
+
+def visualize_path(ax, path, color="red"):
+    """
+    Visualize the path on the given axis.
+    """
+    x_coords = [point[0] for point in path]
+    y_coords = [point[1] for point in path]
+    ax.plot(x_coords, y_coords, color=color, linewidth=2)
+    ax.scatter(x_coords, y_coords, color=color, s=20)
 
 if __name__ == "__main__":
-    buffer = 0
-    world = Map(BUFFER=buffer)
+    # Example usage
+    qinit = (50, 250)  # Starting point
+    qgoal = (500, 50)  # Target point
+    k_max = 25_000  # Maximum iterations
+    pgoal = 0.2  # Probability of sampling qgoal
+    poutside = 0.95  # Range for random sampling
 
-    start = [50, 50]
-    goal = [500, 50]
-    step_size = 10
-    max_iterations = 10_000
-
-    path, tree_a, tree_b = arrt_anytime_connect(start, goal, step_size, max_iterations, buffer)
-    if path:
-        print("Path found:")
-        for point in path:
-            print(point)
+    result, tree_a, tree_b = arrt_connect(qinit, qgoal, k_max, pgoal, poutside)
+    if result != "Fail":
+        print(f"Search completed. Path found with {len(tree_a.nodes)} nodes in Tree A and {len(tree_b.nodes)} nodes in Tree B.")
+        visualize_path_and_trees(tree_a, tree_b, result)
     else:
-        print("No path found.")
-
-    visualize_search(path, start, goal, tree_a, tree_b, buffer)
-    visualize_path(path, start, goal, world, buffer)
+        print("Search failed. No path found.")
+        visualize_path_and_trees(tree_a, tree_b, result)

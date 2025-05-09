@@ -9,12 +9,33 @@ from nav_msgs.msg import Odometry
 from tf_transformations import euler_from_quaternion
 
 # Import planning and visualization
-from search import arrt_anytime_connect, visualize_search, visualize_path
+from search import arrt_connect, visualize_path_and_trees
 
 CONTROL_DT = 0.1  # seconds
 WAYPOINT_TOL = 5.0  # cm
-LINEAR_SPEED = 0.2  # m/s
+LINEAR_SPEED = 0.1  # m/s
 ANGULAR_SPEED = 0.5  # rad/s
+
+def smooth_path(path, weight_data=0.5, weight_smooth=0.25, tolerance=0.01):
+    """
+    Smooths the path using gradient descent.
+    :param path: List of waypoints [(x1, y1), (x2, y2), ...]
+    :param weight_data: Weight for the original data points
+    :param weight_smooth: Weight for the smoothing term
+    :param tolerance: Convergence tolerance
+    :return: Smoothed path
+    """
+    new_path = [list(point) for point in path]
+    change = tolerance
+    while change >= tolerance:
+        change = 0.0
+        for i in range(1, len(path) - 1):  # Skip the first and last points
+            for j in range(len(path[i])):
+                aux = new_path[i][j]
+                new_path[i][j] += weight_data * (path[i][j] - new_path[i][j])
+                new_path[i][j] += weight_smooth * (new_path[i - 1][j] + new_path[i + 1][j] - 2.0 * new_path[i][j])
+                change += abs(aux - new_path[i][j])
+    return [tuple(point) for point in new_path]
 
 class TurtlebotWaypointNode(Node):
     def __init__(self):
@@ -27,19 +48,22 @@ class TurtlebotWaypointNode(Node):
         # ───── Get path from ARRT-Connect ─────
         start = (50, 250)   # cm
         goal = (500, 250)  # cm
-        step = 5
-        max_iter = 5000
-        buffer = 25
+        max_iter = 25_000
+        pgoal = 0.2  # Probability of sampling qgoal
+        poutside = 0.95  # Range for random sampling
 
-        path, tree_a, tree_b = arrt_anytime_connect(start, goal, step, max_iter, buffer)
+        path, tree_a, tree_b = arrt_connect(start, goal, max_iter, pgoal, poutside)
 
-        path.reverse()
+        # path.reverse()
 
         print(f"Path found: {path}")
 
+        # Smooth the path
+        path = smooth_path(path)
+        print(f"Smoothed path: {path}")
+
         # ───── Visualize search and path ─────
-        visualize_search(path, start, goal, tree_a, tree_b, buffer)
-        visualize_path(path, start, goal, buffer)
+        visualize_path_and_trees(tree_a, tree_b, path)
 
         self.path = path
         self.index = 0
