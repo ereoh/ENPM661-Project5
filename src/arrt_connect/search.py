@@ -2,7 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
 import numpy as np
-r = 0  # Robot radius in meters
+
+####################################################################
+# Map and Obstacle Definitions
+####################################################################
+
+r = 22  # Robot radius in meters
 
 # Constants for map dimensions and scaling
 CONVERT_TO_CM = 100  # Conversion factor to centimeters
@@ -131,6 +136,10 @@ class Map:
                 if not self.is_valid_point(x, y):
                     grid[x, y] = False
         return grid
+
+####################################################################
+# Path Planning Algorithms
+####################################################################
 
 # Algorithm 5 Line 1
 # Swap(T_a, T_b)
@@ -302,6 +311,10 @@ def arrt_anytime_connect(start, goal, step_size, max_iterations, buffer):
     # Algorithm 1 Line 12
     return best_path, tree_a, tree_b
 
+########################################################################
+# Visualization functions for the path and search trees
+########################################################################
+
 # Visualize full path, obstacles, trees, start and goal
 def visualize_search(path, start, goal, tree_a, tree_b, buffer):
     world = Map(BUFFER=buffer)
@@ -358,7 +371,10 @@ def visualize_path(path, start, goal, buffer):
     plt.grid(True)
     plt.show()
 
+####################################################################
 # Main execution block: initialize world, plan path, and visualize
+####################################################################
+
 if __name__ == "__main__":
     buffer = 0
     world = Map(BUFFER=buffer)
