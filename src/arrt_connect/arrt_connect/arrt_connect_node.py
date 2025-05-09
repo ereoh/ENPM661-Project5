@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import math
-import time
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
@@ -56,11 +55,11 @@ class TurtlebotWaypointNode(Node):
 
         # path.reverse()
 
-        print(f"Path found: {path}")
+        # print(f"Path found: {path}")
 
         # Smooth the path
         path = smooth_path(path)
-        print(f"Smoothed path: {path}")
+        # print(f"Smoothed path: {path}")
 
         # ───── Visualize search and path ─────
         visualize_path_and_trees(tree_a, tree_b, path)
@@ -97,12 +96,12 @@ class TurtlebotWaypointNode(Node):
         angle_diff = self.normalize_angle(target_theta - theta)
 
         cmd = Twist()
-        if cmd != self.previous_cmd:
-            print(f"Sending command: {cmd}")
-            print(f"Current pose: {self.pose}")
-            print(f"Target waypoint: {self.path[self.index]}")
-            print(f"Angle difference: {angle_diff}")
-            print(f"Distance to waypoint: {dist}")
+        # if cmd != self.previous_cmd:
+        #     print(f"Sending command: {cmd}")
+        #     print(f"Current pose: {self.pose}")
+        #     print(f"Target waypoint: {self.path[self.index]}")
+        #     print(f"Angle difference: {angle_diff}")
+        #     print(f"Distance to waypoint: {dist}")
         self.previous_cmd = cmd
         if abs(angle_diff) > 0.2:
             cmd.angular.z = ANGULAR_SPEED if angle_diff > 0 else -ANGULAR_SPEED

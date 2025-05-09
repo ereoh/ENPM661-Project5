@@ -1,9 +1,7 @@
 import random
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import KDTree
-import numpy as np
-import time  # Import the time module
+import time
 
 ####################################################################
 # Map and Obstacle Definitions
@@ -228,7 +226,7 @@ def random_configuration_in_space():
     while True:
         x = random.uniform(X_BOUNDS[0], X_BOUNDS[1])
         y = random.uniform(Y_BOUNDS[0], Y_BOUNDS[1])
-        if map_instance.is_valid_point(x, y):  # Use the Map class's is_valid_point method
+        if map_instance.is_valid_point(x, y):
             return (x, y)
 
 def random_configuration_in_tree(tree):
