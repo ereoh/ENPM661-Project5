@@ -5,7 +5,6 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from tf_transformations import euler_from_quaternion
 
 # Import planning and visualization
 from search import arrt_connect, visualize_path_and_trees
@@ -114,6 +113,28 @@ class TurtlebotWaypointNode(Node):
         while angle > math.pi: angle -= 2 * math.pi
         while angle < -math.pi: angle += 2 * math.pi
         return angle
+
+def euler_from_quaternion(quaternion):
+    """
+    Convert a quaternion into Euler angles (roll, pitch, yaw).
+    :param quaternion: [x, y, z, w] quaternion
+    :return: tuple (roll, pitch, yaw) in radians
+    """
+    x, y, z, w = quaternion
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll = math.atan2(t0, t1)
+
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch = math.asin(t2)
+
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw = math.atan2(t3, t4)
+
+    return roll, pitch, yaw
 
 def main(args=None):
     rclpy.init(args=args)
