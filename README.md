@@ -67,7 +67,7 @@ x y theta
 ```
 
 ### Run the ROS 2 Node
-To run the `arrt_connect_node` and find a path using the ARRT-Connect algorithm, execute the following command:
+To run the `arrt_connect_node` and find a path using the ARRT-Connect algorithm open a new terminal, source the setup file, and execute the following command:
 
 ```bash
 ros2 run arrt_connect arrt_connect_node
